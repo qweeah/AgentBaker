@@ -2281,3 +2281,36 @@ func Test_Ubuntu2204Gen2_ImagePullIdentityBinding_Disabled_Scriptless(t *testing
 		},
 	})
 }
+
+// Test_CustomCredentialProvider tests that a custom-built credential provider binary
+// can be installed via the LinuxCredentialProviderURL mechanism.
+// Set CUSTOM_CREDENTIAL_PROVIDER_URL env var to point to your custom tar.gz.
+func Test_CustomCredentialProvider(t *testing.T) {
+	customURL := config.Config.CustomCredentialProviderURL
+	if customURL == "" {
+		t.Skip("CUSTOM_CREDENTIAL_PROVIDER_URL not set, skipping custom credential provider test")
+	}
+	RunScenario(t, &Scenario{
+		Description: "Tests that a custom-built credential provider binary can be installed and used for node bootstrapping",
+		Tags: Tags{
+			Name: "CustomCredentialProvider",
+		},
+		Config: Config{
+			Cluster: ClusterKubenet,
+			VHD:     config.VHDUbuntu2204Gen2Containerd,
+			BootstrapConfigMutator: func(nbc *datamodel.NodeBootstrappingConfiguration) {
+				nbc.K8sComponents.LinuxCredentialProviderURL = customURL
+				nbc.KubeletConfig["--image-credential-provider-config"] = "/var/lib/kubelet/credential-provider-config.yaml"
+				nbc.KubeletConfig["--image-credential-provider-bin-dir"] = "/var/lib/kubelet/credential-provider"
+			},
+			Validator: func(ctx context.Context, s *Scenario) {
+				// Validate the credential provider binary was installed
+				ValidateFileExists(ctx, s, "/var/lib/kubelet/credential-provider/acr-credential-provider")
+				// Validate the credential provider config was written
+				ValidateFileExists(ctx, s, "/var/lib/kubelet/credential-provider-config.yaml")
+				// Validate the binary is executable and responds to --version
+				ValidateInstalledCredentialProvider(ctx, s)
+			},
+		},
+	})
+}

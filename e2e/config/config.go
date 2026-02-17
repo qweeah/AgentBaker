@@ -53,6 +53,12 @@ type Configuration struct {
 	BlobContainer                          string        `env:"BLOB_CONTAINER" envDefault:"abe2e"`
 	BlobStorageAccountPrefix               string        `env:"BLOB_STORAGE_ACCOUNT_PREFIX" envDefault:"abe2e"`
 	BuildID                                string        `env:"BUILD_ID" envDefault:"local"`
+	// CustomCredentialProviderURL is the URL to a custom-built credential provider tar.gz.
+	// The tar.gz must contain a single binary named "azure-acr-credential-provider" at its root.
+	// Supports both amd64 and arm64 architectures - set the appropriate URL for the target arch.
+	// Example: "https://<your-acr>.azurecr.io/credential-provider:v0.1.0-linux-amd64" (OCI/ORAS)
+	//          "https://<storage>.blob.core.windows.net/builds/azure-acr-credential-provider-linux-amd64-v0.1.0.tar.gz" (HTTP)
+	CustomCredentialProviderURL            string        `env:"CUSTOM_CREDENTIAL_PROVIDER_URL"`
 	DefaultLocation                        string        `env:"E2E_LOCATION" envDefault:"westus3"`
 	DefaultPollInterval                    time.Duration `env:"DEFAULT_POLL_INTERVAL" envDefault:"1s"`
 	DefaultSubnetName                      string        `env:"DEFAULT_SUBNET_NAME" envDefault:"aks-subnet"`

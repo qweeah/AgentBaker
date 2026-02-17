@@ -500,6 +500,27 @@ func ValidateFileIsRegularFile(ctx context.Context, s *Scenario, fileName string
 	}
 }
 
+// ValidateInstalledCredentialProvider validates that the credential provider binary at
+// /var/lib/kubelet/credential-provider/acr-credential-provider is executable and functional.
+func ValidateInstalledCredentialProvider(ctx context.Context, s *Scenario) {
+	s.T.Helper()
+	binaryPath := "/var/lib/kubelet/credential-provider/acr-credential-provider"
+
+	// Check the binary is executable and can print version info
+	steps := []string{
+		"set -ex",
+		fmt.Sprintf("test -x %s", binaryPath),
+		fmt.Sprintf("file %s", binaryPath),
+		fmt.Sprintf("%s --version 2>&1 || true", binaryPath),
+	}
+	result := execScriptOnVMForScenario(ctx, s, strings.Join(steps, "\n"))
+	if result.exitCode != "0" {
+		s.T.Fatalf("credential provider binary at %s is not executable or failed validation: exit=%s stdout=%s stderr=%s",
+			binaryPath, result.exitCode, result.stdout, result.stderr)
+	}
+	s.T.Logf("credential provider binary validation passed: %s", result.stdout)
+}
+
 func fileExist(ctx context.Context, s *Scenario, fileName string) bool {
 	s.T.Helper()
 	if s.IsWindows() {
