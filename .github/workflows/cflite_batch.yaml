@@ -1,12 +1,6 @@
 name: ClusterFuzzLite batch fuzzing
 on:
   workflow_dispatch: {}
-  push:
-    branches:
-      - master  # Use your actual default branch here.
-      - ace/fuzzLite
-  schedule:
-    - cron: '*/15 * * * *'  # Every 15min. Change this to whatever is suitable.
 
 permissions: read-all
 
