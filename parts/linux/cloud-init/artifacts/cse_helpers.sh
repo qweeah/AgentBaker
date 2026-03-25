@@ -951,6 +951,19 @@ getLatestPkgVersionFromK8sVersion() {
         return 0
     fi
 
+    # When SAIP is enabled and we're installing the credential provider,
+    # filter to only beta versions so the existing selection logic picks the latest beta.
+    # shellcheck disable=SC3010
+    if [ "${SERVICE_ACCOUNT_IMAGE_PULL_ENABLED:-}" = "true" ] && [ "${componentName}" = "azure-acr-credential-provider-pmc" ]; then
+        local betaVersions=()
+        for v in "${PACKAGE_VERSIONS[@]}"; do
+            [[ "$v" == *beta* ]] && betaVersions+=("$v")
+        done
+        if [ ${#betaVersions[@]} -gt 0 ]; then
+            PACKAGE_VERSIONS=("${betaVersions[@]}")
+        fi
+    fi
+
     # sort the array from highest to lowest version
     IFS=$'\n' sortedPackageVersions=($(sort -rV <<<"${PACKAGE_VERSIONS[*]}"))
     unset IFS
@@ -959,18 +972,8 @@ getLatestPkgVersionFromK8sVersion() {
     for version in "${sortedPackageVersions[@]}"; do
         majorMinorVersion="$(echo "$version" | cut -d- -f1 | cut -d. -f1,2)"
         if [ "$majorMinorVersion" = "$k8sMajorMinorVersion" ]; then
-            # When SAIP is enabled and we're installing the credential provider,
-            # select the beta version instead of the highest stable version.
-            # shellcheck disable=SC3010
-            if [ "${SERVICE_ACCOUNT_IMAGE_PULL_ENABLED:-}" = "true" ] && [ "${componentName}" = "azure-acr-credential-provider-pmc" ]; then
-                if [[ "$version" == *beta* ]]; then
-                    PACKAGE_VERSION=$version
-                    break
-                fi
-            else
-                PACKAGE_VERSION=$version
-                break
-            fi
+            PACKAGE_VERSION=$version
+            break
         fi
     done
     echo $PACKAGE_VERSION
