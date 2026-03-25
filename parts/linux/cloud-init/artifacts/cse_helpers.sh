@@ -951,10 +951,9 @@ getLatestPkgVersionFromK8sVersion() {
         return 0
     fi
 
-    # When SAIP is enabled and we're installing the credential provider,
-    # filter to only beta versions so the existing selection logic picks the latest beta.
+    # When SAIP is enabled, filter to only beta versions so the existing selection logic picks the latest beta.
     # shellcheck disable=SC3010
-    if [ "${SERVICE_ACCOUNT_IMAGE_PULL_ENABLED:-}" = "true" ] && [ "${componentName}" = "azure-acr-credential-provider-pmc" ]; then
+    if [ "${SERVICE_ACCOUNT_IMAGE_PULL_ENABLED:-}" = "true" ]; then
         local betaVersions=()
         for v in "${PACKAGE_VERSIONS[@]}"; do
             [[ "$v" == *beta* ]] && betaVersions+=("$v")
