@@ -934,6 +934,8 @@ updatePackageDownloadURL() {
 }
 
 # Get latestVersion for a given k8sVersion from components.json based on the os and osVersion
+# When SERVICE_ACCOUNT_IMAGE_PULL_ENABLED is "true" and the component is azure-acr-credential-provider-pmc,
+# selects the beta version matching the same major.minor instead of the highest stable version.
 getLatestPkgVersionFromK8sVersion() {
     local k8sVersion="$1"
     local componentName="$2"
@@ -956,9 +958,19 @@ getLatestPkgVersionFromK8sVersion() {
     PACKAGE_VERSION=${sortedPackageVersions[0]}
     for version in "${sortedPackageVersions[@]}"; do
         majorMinorVersion="$(echo "$version" | cut -d- -f1 | cut -d. -f1,2)"
-        if [ $majorMinorVersion = $k8sMajorMinorVersion ]; then
-            PACKAGE_VERSION=$version
-            break
+        if [ "$majorMinorVersion" = "$k8sMajorMinorVersion" ]; then
+            # When SAIP is enabled and we're installing the credential provider,
+            # select the beta version instead of the highest stable version.
+            # shellcheck disable=SC3010
+            if [ "${SERVICE_ACCOUNT_IMAGE_PULL_ENABLED:-}" = "true" ] && [ "${componentName}" = "azure-acr-credential-provider-pmc" ]; then
+                if [[ "$version" == *beta* ]]; then
+                    PACKAGE_VERSION=$version
+                    break
+                fi
+            else
+                PACKAGE_VERSION=$version
+                break
+            fi
         fi
     done
     echo $PACKAGE_VERSION
