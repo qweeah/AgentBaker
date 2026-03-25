@@ -934,6 +934,7 @@ updatePackageDownloadURL() {
 }
 
 # Get latestVersion for a given k8sVersion from components.json based on the os and osVersion
+# When k8sVersion contains a non-numeric suffix (e.g. "1.34-beta"), filters by the k8sVersion JSON field.
 getLatestPkgVersionFromK8sVersion() {
     local k8sVersion="$1"
     local componentName="$2"
@@ -946,6 +947,23 @@ getLatestPkgVersionFromK8sVersion() {
     # shellcheck disable=SC3010
     if [[ ${#PACKAGE_VERSIONS[@]} -eq 0 || ${PACKAGE_VERSIONS[0]} == "<SKIP>" ]]; then
         echo "INFO: ${componentName} package versions array is either empty or the first element is <SKIP>. Skipping ${componentName} installation."
+        return 0
+    fi
+
+    # When k8sVersion contains a suffix like "-beta", filter by k8sVersion JSON field
+    # to select the matching entry directly instead of picking the highest version.
+    local k8sVersionSuffix
+    k8sVersionSuffix="$(echo "$k8sVersion" | cut -s -d- -f2-)"
+    if [ -n "${k8sVersionSuffix}" ]; then
+        local k8sVersionTag="${k8sMajorMinorVersion}-${k8sVersionSuffix}"
+        local packageJSON
+        packageJSON=$(getPackageJSON "${package}" "${@:3}")
+        PACKAGE_VERSION=$(jq -r ".versionsV2[] | select(.k8sVersion == \"${k8sVersionTag}\") | .latestVersion // empty" <<< "${packageJSON}" | head -1)
+        if [ -z "${PACKAGE_VERSION}" ]; then
+            echo "WARNING: No version found for k8sVersion tag ${k8sVersionTag} in ${componentName}"
+            PACKAGE_VERSION=${sortedPackageVersions[0]}
+        fi
+        echo "$PACKAGE_VERSION"
         return 0
     fi
 

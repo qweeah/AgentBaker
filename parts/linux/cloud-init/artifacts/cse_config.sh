@@ -764,7 +764,15 @@ EOF
             # For network isolated clusters, try distro packages first and fallback to binary installation
             logs_to_events "AKS.CSE.ensureKubelet.installCredentialProviderFromBootstrapProfileRegistry" installCredentialProviderPackageFromBootstrapProfileRegistry ${BOOTSTRAP_PROFILE_CONTAINER_REGISTRY_SERVER} ${KUBERNETES_VERSION}
         elif [ "$(type -t installCredentialProviderFromPkg)" = function ]; then
-            logs_to_events "AKS.CSE.ensureKubelet.installCredentialProviderFromPkg" "installCredentialProviderFromPkg ${KUBERNETES_VERSION}"
+            if [ "${SERVICE_ACCOUNT_IMAGE_PULL_ENABLED}" = "true" ]; then
+                # For SAIP-enabled clusters, pass k8s version with -beta suffix to select
+                # the beta credential provider from components.json (k8sVersion: "1.34-beta")
+                local k8sMajorMinor
+                k8sMajorMinor="$(echo "${KUBERNETES_VERSION}" | cut -d. -f1,2)"
+                logs_to_events "AKS.CSE.ensureKubelet.installCredentialProviderFromPkg.beta" "installCredentialProviderFromPkg ${k8sMajorMinor}-beta"
+            else
+                logs_to_events "AKS.CSE.ensureKubelet.installCredentialProviderFromPkg" "installCredentialProviderFromPkg ${KUBERNETES_VERSION}"
+            fi
         else
             echo "installCredentialProviderFromPkg is not defined for this OS"
             exit $ERR_CREDENTIAL_PROVIDER_DOWNLOAD_TIMEOUT
