@@ -934,7 +934,8 @@ updatePackageDownloadURL() {
 }
 
 # Get latestVersion for a given k8sVersion from components.json based on the os and osVersion
-# When k8sVersion contains a non-numeric suffix (e.g. "1.34-beta"), filters by the k8sVersion JSON field.
+# When SERVICE_ACCOUNT_IMAGE_PULL_ENABLED is "true" and the component is azure-acr-credential-provider-pmc,
+# selects the latest beta version matching the same major.minor instead of the highest stable version.
 getLatestPkgVersionFromK8sVersion() {
     local k8sVersion="$1"
     local componentName="$2"
@@ -950,21 +951,17 @@ getLatestPkgVersionFromK8sVersion() {
         return 0
     fi
 
-    # When k8sVersion contains a suffix like "-beta", filter by k8sVersion JSON field
-    # to select the matching entry directly instead of picking the highest version.
-    local k8sVersionSuffix
-    k8sVersionSuffix="$(echo "$k8sVersion" | cut -s -d- -f2-)"
-    if [ -n "${k8sVersionSuffix}" ]; then
-        local k8sVersionTag="${k8sMajorMinorVersion}-${k8sVersionSuffix}"
-        local packageJSON
-        packageJSON=$(getPackageJSON "${package}" "${@:3}")
-        PACKAGE_VERSION=$(jq -r ".versionsV2[] | select(.k8sVersion == \"${k8sVersionTag}\") | .latestVersion // empty" <<< "${packageJSON}" | head -1)
-        if [ -z "${PACKAGE_VERSION}" ]; then
-            echo "WARNING: No version found for k8sVersion tag ${k8sVersionTag} in ${componentName}"
-            PACKAGE_VERSION=${sortedPackageVersions[0]}
+    # When SAIP is enabled and we're installing the credential provider,
+    # filter to only beta versions so the existing selection logic picks the latest beta.
+    # shellcheck disable=SC3010
+    if [ "${SERVICE_ACCOUNT_IMAGE_PULL_ENABLED:-}" = "true" ] && [ "${componentName}" = "azure-acr-credential-provider-pmc" ]; then
+        local betaVersions=()
+        for v in "${PACKAGE_VERSIONS[@]}"; do
+            [[ "$v" == *beta* ]] && betaVersions+=("$v")
+        done
+        if [ ${#betaVersions[@]} -gt 0 ]; then
+            PACKAGE_VERSIONS=("${betaVersions[@]}")
         fi
-        echo "$PACKAGE_VERSION"
-        return 0
     fi
 
     # sort the array from highest to lowest version
@@ -974,7 +971,7 @@ getLatestPkgVersionFromK8sVersion() {
     PACKAGE_VERSION=${sortedPackageVersions[0]}
     for version in "${sortedPackageVersions[@]}"; do
         majorMinorVersion="$(echo "$version" | cut -d- -f1 | cut -d. -f1,2)"
-        if [ $majorMinorVersion = $k8sMajorMinorVersion ]; then
+        if [ "$majorMinorVersion" = "$k8sMajorMinorVersion" ]; then
             PACKAGE_VERSION=$version
             break
         fi
