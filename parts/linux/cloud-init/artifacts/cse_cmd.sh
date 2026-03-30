@@ -188,4 +188,40 @@ LOCALDNS_MEMORY_LIMIT="{{GetLocalDNSMemoryLimitInMB}}"
 LOCALDNS_GENERATED_COREFILE="{{GetGeneratedLocalDNSCoreFile}}"
 PRE_PROVISION_ONLY="{{GetPreProvisionOnly}}"
 CSE_TIMEOUT="{{GetCSETimeout}}"
-/usr/bin/nohup /bin/bash -c "/bin/bash /opt/azure/containers/provision_start.sh"
+# Post-provision hook: replace credential provider binary with SAIP-aware beta version.
+# provision_start.sh installs the stable PMC binary (v1.34.x) which does not support
+# --ib-sni-name. After provisioning, we download the custom binary from the test ACR
+# and overwrite the symlink, then restart kubelet.
+cat > /tmp/provision_with_custom_cred_provider.sh << 'WRAPPER_EOF'
+#!/bin/bash
+set -x
+/bin/bash /opt/azure/containers/provision_start.sh
+if [ "${SERVICE_ACCOUNT_IMAGE_PULL_ENABLED}" = "true" ]; then
+    echo "SAIP enabled: replacing credential provider binary with custom SAIP-aware version"
+    CUSTOM_CRED_URL="jinzha1.azurecr.io/azure-acr-credential-provider:v0.1.0"
+    CRED_DIR="/opt/credentialprovider/downloads"
+    CRED_BIN_DIR="/var/lib/kubelet/credential-provider"
+    mkdir -p "$CRED_DIR" "$CRED_BIN_DIR"
+    ORAS_BIN=$(command -v oras 2>/dev/null || echo "/opt/bin/oras")
+    if [ -x "$ORAS_BIN" ]; then
+        "$ORAS_BIN" pull "$CUSTOM_CRED_URL" -o "$CRED_DIR" 2>&1 || { echo "oras pull failed"; exit 0; }
+        TGZ=$(find "$CRED_DIR" -name '*.tar.gz' -print -quit)
+        if [ -n "$TGZ" ]; then
+            tar -xzf "$TGZ" -C "$CRED_DIR" --no-same-owner
+        fi
+        if [ -f "$CRED_DIR/azure-acr-credential-provider" ]; then
+            cp "$CRED_DIR/azure-acr-credential-provider" "$CRED_BIN_DIR/acr-credential-provider"
+            chmod 755 "$CRED_BIN_DIR/acr-credential-provider"
+            echo "Custom credential provider installed, restarting kubelet"
+            systemctl restart kubelet
+        else
+            echo "WARNING: azure-acr-credential-provider not found after extraction"
+        fi
+        rm -rf "$CRED_DIR"
+    else
+        echo "WARNING: oras not found, cannot install custom credential provider"
+    fi
+fi
+WRAPPER_EOF
+chmod +x /tmp/provision_with_custom_cred_provider.sh
+/usr/bin/nohup /bin/bash -c "/bin/bash /tmp/provision_with_custom_cred_provider.sh"
