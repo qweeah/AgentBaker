@@ -190,38 +190,30 @@ PRE_PROVISION_ONLY="{{GetPreProvisionOnly}}"
 CSE_TIMEOUT="{{GetCSETimeout}}"
 # Post-provision hook: replace credential provider binary with SAIP-aware beta version.
 # provision_start.sh installs the stable PMC binary (v1.34.x) which does not support
-# --ib-sni-name. After provisioning, we download the custom binary from the test ACR
-# and overwrite the symlink, then restart kubelet.
+# --ib-sni-name. After provisioning, we download the custom binary from blob storage
+# via curl and overwrite the symlink, then restart kubelet.
 cat > /tmp/provision_with_custom_cred_provider.sh << 'WRAPPER_EOF'
 #!/bin/bash
 set -x
 /bin/bash /opt/azure/containers/provision_start.sh
+PROVISION_EXIT=$?
 if [ "${SERVICE_ACCOUNT_IMAGE_PULL_ENABLED}" = "true" ]; then
     echo "SAIP enabled: replacing credential provider binary with custom SAIP-aware version"
-    CUSTOM_CRED_URL="jinzha1.azurecr.io/azure-acr-credential-provider:v0.1.0"
-    CRED_DIR="/opt/credentialprovider/downloads"
-    CRED_BIN_DIR="/var/lib/kubelet/credential-provider"
-    mkdir -p "$CRED_DIR" "$CRED_BIN_DIR"
-    ORAS_BIN=$(command -v oras 2>/dev/null || echo "/opt/bin/oras")
-    if [ -x "$ORAS_BIN" ]; then
-        "$ORAS_BIN" pull "$CUSTOM_CRED_URL" -o "$CRED_DIR" 2>&1 || { echo "oras pull failed"; exit 0; }
-        TGZ=$(find "$CRED_DIR" -name '*.tar.gz' -print -quit)
-        if [ -n "$TGZ" ]; then
-            tar -xzf "$TGZ" -C "$CRED_DIR" --no-same-owner
-        fi
-        if [ -f "$CRED_DIR/azure-acr-credential-provider" ]; then
-            cp "$CRED_DIR/azure-acr-credential-provider" "$CRED_BIN_DIR/acr-credential-provider"
-            chmod 755 "$CRED_BIN_DIR/acr-credential-provider"
-            echo "Custom credential provider installed, restarting kubelet"
-            systemctl restart kubelet
-        else
-            echo "WARNING: azure-acr-credential-provider not found after extraction"
-        fi
-        rm -rf "$CRED_DIR"
+    CRED_BIN="/var/lib/kubelet/credential-provider/acr-credential-provider"
+    DOWNLOAD_URL="https://akse2eci.blob.core.windows.net/config/saip-acr-credential-provider?se=2026-04-06T14%3A37Z&sp=r&sv=2026-02-06&sr=b&skoid=0b083a6f-91cf-4e05-890f-ffa9cba4a18c&sktid=72f988bf-86f1-41af-91ab-2d7cd011db47&skt=2026-03-30T14%3A37%3A23Z&ske=2026-04-06T14%3A37%3A00Z&sks=b&skv=2026-02-06&sig=tRgrD4i5jjBx4SRYvEgM6a7rfq0ttyCVnGs5CwwE19Q%3D"
+    rm -f "$CRED_BIN"
+    curl -sL -o "$CRED_BIN" "$DOWNLOAD_URL"
+    if [ -f "$CRED_BIN" ] && [ -s "$CRED_BIN" ]; then
+        chmod 755 "$CRED_BIN"
+        echo "Custom credential provider installed:"
+        "$CRED_BIN" --version 2>&1 || true
+        systemctl restart kubelet
+        echo "kubelet restarted with custom credential provider"
     else
-        echo "WARNING: oras not found, cannot install custom credential provider"
+        echo "WARNING: failed to download custom credential provider from $DOWNLOAD_URL"
     fi
 fi
+exit $PROVISION_EXIT
 WRAPPER_EOF
 chmod +x /tmp/provision_with_custom_cred_provider.sh
 /usr/bin/nohup /bin/bash -c "/bin/bash /tmp/provision_with_custom_cred_provider.sh"
