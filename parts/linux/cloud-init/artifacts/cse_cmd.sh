@@ -188,32 +188,4 @@ LOCALDNS_MEMORY_LIMIT="{{GetLocalDNSMemoryLimitInMB}}"
 LOCALDNS_GENERATED_COREFILE="{{GetGeneratedLocalDNSCoreFile}}"
 PRE_PROVISION_ONLY="{{GetPreProvisionOnly}}"
 CSE_TIMEOUT="{{GetCSETimeout}}"
-# Post-provision hook: replace credential provider binary with SAIP-aware beta version.
-# provision_start.sh installs the stable PMC binary (v1.34.x) which does not support
-# --ib-sni-name. After provisioning, we download the custom binary from blob storage
-# via curl and overwrite the symlink, then restart kubelet.
-cat > /tmp/provision_with_custom_cred_provider.sh << 'WRAPPER_EOF'
-#!/bin/bash
-set -x
-/bin/bash /opt/azure/containers/provision_start.sh
-PROVISION_EXIT=$?
-if [ "${SERVICE_ACCOUNT_IMAGE_PULL_ENABLED}" = "true" ]; then
-    echo "SAIP enabled: replacing credential provider binary with custom SAIP-aware version"
-    CRED_BIN="/var/lib/kubelet/credential-provider/acr-credential-provider"
-    DOWNLOAD_URL="https://akse2eci.blob.core.windows.net/config/saip-acr-credential-provider?se=2026-04-06T14%3A37Z&sp=r&sv=2026-02-06&sr=b&skoid=0b083a6f-91cf-4e05-890f-ffa9cba4a18c&sktid=72f988bf-86f1-41af-91ab-2d7cd011db47&skt=2026-03-30T14%3A37%3A23Z&ske=2026-04-06T14%3A37%3A00Z&sks=b&skv=2026-02-06&sig=tRgrD4i5jjBx4SRYvEgM6a7rfq0ttyCVnGs5CwwE19Q%3D"
-    rm -f "$CRED_BIN"
-    curl -sL -o "$CRED_BIN" "$DOWNLOAD_URL"
-    if [ -f "$CRED_BIN" ] && [ -s "$CRED_BIN" ]; then
-        chmod 755 "$CRED_BIN"
-        echo "Custom credential provider installed:"
-        "$CRED_BIN" --version 2>&1 || true
-        systemctl restart kubelet
-        echo "kubelet restarted with custom credential provider"
-    else
-        echo "WARNING: failed to download custom credential provider from $DOWNLOAD_URL"
-    fi
-fi
-exit $PROVISION_EXIT
-WRAPPER_EOF
-chmod +x /tmp/provision_with_custom_cred_provider.sh
-/usr/bin/nohup /bin/bash -c "/bin/bash /tmp/provision_with_custom_cred_provider.sh"
+/usr/bin/nohup /bin/bash -c "/bin/bash /opt/azure/containers/provision_start.sh"
